@@ -1,0 +1,5 @@
+{
+  "name": "StyleExtract AI",
+  "description": "An AI-powered tool to isolate clothing, hair, and accessories from character images using Gemini 2.5 Flash Image.",
+  "requestFramePermissions": []
+}
