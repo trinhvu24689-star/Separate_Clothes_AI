@@ -2,12 +2,12 @@ import { GoogleGenAI } from "@google/genai";
 import { Resolution } from "../types";
 
 const getClient = () => {
-  // Thử lấy key từ nhiều nguồn
+  // Always access the process.env directly to get the latest injected key
   const apiKey = process.env.API_KEY;
   
   if (!apiKey || apiKey.length === 0) {
     console.error("API Key is missing. Please check Vercel Environment Variables.");
-    throw new Error("API Key chưa được cấu hình. Vui lòng thêm API_KEY vào biến môi trường.");
+    throw new Error("API Key chưa được cấu hình. Vui lòng thêm API_KEY vào biến môi trường hoặc chọn key.");
   }
   return new GoogleGenAI({ apiKey });
 };
@@ -18,16 +18,17 @@ export const generateSeparatedImage = async (
   prompt: string,
   resolution: Resolution
 ): Promise<string> => {
+  // Always get a fresh client to pick up any new API keys
   const ai = getClient();
   
   // Clean base64 string
   const cleanBase64 = base64Data.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, '');
 
-  // Mặc định dùng flash cho nhanh, trừ khi chọn độ phân giải cao
+  // Default model
   let model = 'gemini-2.5-flash-image';
   let config: any = {};
 
-  // Cấu hình model dựa trên độ phân giải
+  // Configure model based on resolution
   switch (resolution) {
     case '1240p':
     case '1440p':
@@ -37,7 +38,7 @@ export const generateSeparatedImage = async (
       model = 'gemini-3-pro-image-preview';
       config = {
         imageConfig: {
-          imageSize: '2K' // Pro model hỗ trợ tối đa 2K output qua API hiện tại
+          imageSize: '2K' // Pro model supports max 2K output via current API
         }
       };
       break;
@@ -58,7 +59,7 @@ export const generateSeparatedImage = async (
             },
           },
           {
-            // Kết hợp prompt của người dùng với system prompt bắt buộc để đảm bảo chất lượng
+            // Combined prompt
             text: `${prompt} \n\nIMPORTANT REQUIREMENT: Return ONLY the image output. High precision masking.`,
           },
         ],
@@ -79,7 +80,7 @@ export const generateSeparatedImage = async (
     throw new Error("Không tạo được ảnh. Vui lòng thử lại.");
   } catch (error: any) {
     console.error("Gemini API Error:", error);
-    if (error.message.includes("API key")) {
+    if (error.message && (error.message.includes("API key") || error.message.includes("403") || error.message.includes("401"))) {
         throw new Error("API Key không hợp lệ hoặc đã hết hạn.");
     }
     throw error;
@@ -109,7 +110,7 @@ export const generateArtisticImage = async (
 
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image', // Dùng flash cho nhanh, đỡ lag
+            model: 'gemini-2.5-flash-image', // Fast model for art
             contents: {
                 parts: [
                     { inlineData: { data: cleanBase64, mimeType: mimeType } },
@@ -128,8 +129,11 @@ export const generateArtisticImage = async (
             }
         }
         throw new Error("No artistic image generated.");
-    } catch (error) {
+    } catch (error: any) {
         console.error("Artistic Gen Error:", error);
+         if (error.message && (error.message.includes("API key") || error.message.includes("403"))) {
+            throw new Error("API Key không hợp lệ.");
+        }
         throw error;
     }
 };

@@ -14,7 +14,7 @@ import { AutoPainter } from './components/AutoPainter';
 import { AdminChat } from './components/AdminChat';
 import { PublicChat } from './components/PublicChat';
 import { HistoryView } from './components/HistoryView';
-import { Wand2, Download, RefreshCw, Layers, Sparkles, Undo2, Redo2, Star, Menu, LogOut, Box } from 'lucide-react';
+import { Wand2, Download, RefreshCw, Layers, Sparkles, Undo2, Redo2, Star, Menu, LogOut, Box, Key } from 'lucide-react';
 
 const SUGGESTED_PROMPTS = [
   { 
@@ -156,7 +156,7 @@ const App: React.FC = () => {
     }
   }, [currentUser]);
 
-  // Handle Progress Simulation - No heavy rendering
+  // Handle Progress Simulation
   useEffect(() => {
     if (appState === AppState.PROCESSING) {
       setProgress(0);
@@ -249,6 +249,19 @@ const App: React.FC = () => {
       return;
     }
 
+    // --- API KEY CHECK ---
+    // High resolutions (1240p+) or special models require explicit API key selection
+    const isHighRes = ['1240p', '1440p', '2K', '4K', '8K'].includes(resolution);
+    
+    if (isHighRes && (window as any).aistudio) {
+       const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+       if (!hasKey) {
+          setNeedsApiKey(true);
+          // Don't proceed, show the selection UI
+          return;
+       }
+    }
+
     setNeedsApiKey(false);
     setAppState(AppState.PROCESSING);
     setError(null);
@@ -301,6 +314,14 @@ const App: React.FC = () => {
       }
 
     } catch (err: any) {
+      // Handle "Requested entity was not found" - usually means invalid key ID or project problem
+      if (err.message && (err.message.includes("Requested entity was not found") || err.message.includes("API Key"))) {
+           setNeedsApiKey(true);
+           setError("API Key hiện tại không hợp lệ hoặc đã hết hạn. Vui lòng chọn lại key mới.");
+           setAppState(AppState.IDLE);
+           return;
+      }
+
       setError(err.message || "Đã xảy ra lỗi không mong muốn.");
       setAppState(AppState.ERROR);
       setProgress(0);
@@ -308,9 +329,10 @@ const App: React.FC = () => {
   };
 
   const handleSelectApiKey = async () => {
-    if (window.aistudio?.openSelectKey) {
-      await window.aistudio.openSelectKey();
+    if ((window as any).aistudio?.openSelectKey) {
+      await (window as any).aistudio.openSelectKey();
       setNeedsApiKey(false);
+      // Immediately try generating again
       handleGenerate();
     }
   };
@@ -433,8 +455,8 @@ const App: React.FC = () => {
         {/* Controls */}
         <div className={`bg-[#131B2C] border border-gray-800 rounded-3xl p-6 shadow-md ${!uploadedImage ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-gray-200 flex items-center gap-2">
-                <Wand2 className="w-5 h-5 text-gray-400" /> Tuỳ Chỉnh Xử Lý
+              <h2 className="text-2xl text-white font-['Caveat'] flex items-center gap-2">
+                 Separate Clothes AI 2.0
               </h2>
               <div className="flex gap-2">
                   <button onClick={handleUndo} disabled={historyIndex <= 0} className="p-2 text-gray-400 hover:text-white bg-gray-900 rounded-lg disabled:opacity-30"><Undo2 size={16}/></button>
@@ -445,7 +467,6 @@ const App: React.FC = () => {
            <div className="space-y-6">
              {/* Resolution Grid */}
              <div>
-                <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Chất Lượng & Tốn Tín Dụng</label>
                 <div className="grid grid-cols-4 gap-2">
                     {RESOLUTIONS.map((res) => (
                     <button
@@ -453,8 +474,8 @@ const App: React.FC = () => {
                         onClick={() => changeResolution(res)}
                         className={`px-1 py-3 text-[10px] md:text-xs font-bold rounded-xl border transition-colors flex flex-col items-center justify-center gap-1 ${
                         resolution === res 
-                        ? 'bg-purple-600 border-purple-500 text-white' 
-                        : 'bg-gray-900 border-gray-700 text-gray-400 hover:bg-gray-800'
+                        ? 'bg-[#A855F7] border-[#A855F7] text-white' 
+                        : 'bg-[#1e293b] border-gray-700 text-gray-400 hover:bg-gray-800'
                         }`}
                     >
                         <span>{res}</span>
@@ -465,10 +486,10 @@ const App: React.FC = () => {
              </div>
 
              <div>
-                <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Gợi ý Prompt</label>
-                <div className="flex flex-wrap gap-2">
+                <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">GỢI Ý PROMPT</label>
+                <div className="flex flex-col gap-2">
                     {SUGGESTED_PROMPTS.map((p, idx) => (
-                    <button key={idx} onClick={() => selectPrompt(p.value)} className="text-[10px] px-3 py-2 rounded-lg bg-gray-900 hover:bg-gray-800 text-gray-300 border border-gray-700 transition-colors">
+                    <button key={idx} onClick={() => selectPrompt(p.value)} className="text-xs px-4 py-3 rounded-xl bg-[#1e293b] hover:bg-gray-800 text-gray-300 border border-gray-700 transition-colors text-left">
                         {p.label}
                     </button>
                     ))}
@@ -478,27 +499,31 @@ const App: React.FC = () => {
              <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-gray-200 text-sm h-24 resize-none focus:border-purple-500 outline-none transition-colors"
+                className="w-full bg-[#1e293b] border border-gray-700 rounded-xl p-4 text-gray-200 text-sm h-32 resize-none focus:border-purple-500 outline-none transition-colors"
                 placeholder="Nhập mô tả chi tiết..."
              />
             
              {needsApiKey ? (
-               <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 text-center">
-                 <p className="text-yellow-200 text-sm mb-2">Cần API Key cho {resolution}</p>
-                 <Button onClick={handleSelectApiKey} variant="secondary" className="w-full text-sm">Chọn API Key</Button>
+               <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-6 text-center animate-pulse">
+                 <Key className="w-8 h-8 text-yellow-500 mx-auto mb-2" />
+                 <p className="text-yellow-200 font-bold mb-1">Yêu cầu API Key</p>
+                 <p className="text-yellow-200/70 text-xs mb-4">Độ phân giải {resolution} cần sử dụng key cá nhân của bạn.</p>
+                 <Button onClick={handleSelectApiKey} className="w-full text-sm bg-yellow-600 hover:bg-yellow-500 text-black border-none">
+                     Chọn API Key Ngay
+                 </Button>
                </div>
              ) : (
                <Button 
                  onClick={handleGenerate} 
                  isLoading={appState === AppState.PROCESSING}
-                 className="w-full py-4 text-base font-bold shadow-md shadow-purple-900/10"
+                 className="w-full py-4 text-base font-bold bg-[#8B5CF6] hover:bg-[#7C3AED] shadow-lg shadow-purple-500/20 rounded-xl text-white"
                  disabled={currentUser.credits < COST_MAP[resolution]}
                >
                  {appState === AppState.PROCESSING ? 'Đang Xử Lý...' : `Tách Đối Tượng (-${COST_MAP[resolution]} Stars)`}
                </Button>
              )}
              
-             {error && <div className="text-red-400 text-xs text-center bg-red-900/20 p-2 rounded-lg border border-red-500/20">{error}</div>}
+             {error && <div className="text-red-400 text-sm text-center bg-[#2D1A1A] p-3 rounded-xl border border-red-900/50">{error}</div>}
            </div>
         </div>
       </div>
@@ -578,8 +603,8 @@ const App: React.FC = () => {
             </div>
             
             <div className="absolute left-1/2 -translate-x-1/2 text-center">
-                 <h1 className="text-2xl md:text-3xl font-black text-white">
-                  StyleExtract AI
+                 <h1 className="text-2xl md:text-3xl font-black text-white font-['Caveat']">
+                  Separate Clothes AI 2.0
                </h1>
             </div>
             
