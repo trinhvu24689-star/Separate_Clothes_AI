@@ -1,14 +1,13 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Disable text selection for app-like feel, allow on inputs */
 * {
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
   user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 input, textarea {
@@ -18,73 +17,35 @@ input, textarea {
   user-select: text;
 }
 
-/* 1. NEON RAINBOW TEXT */
+/* --- OPTIMIZED TEXT --- */
+/* Removed neon animation to reduce lag */
 .neon-text-rainbow {
-  background: linear-gradient(
-    to right,
-    #ff0000,
-    #ff7f00,
-    #ffff00,
-    #00ff00,
-    #0000ff,
-    #4b0082,
-    #8f00ff,
-    #ff0000
-  );
-  background-size: 200% auto;
-  color: transparent;
+  background: linear-gradient(to right, #a855f7, #ec4899);
   -webkit-background-clip: text;
   background-clip: text;
-  animation: rainbow-text-move 3s linear infinite;
-  text-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+  color: transparent;
   font-weight: 800;
 }
 
-@keyframes rainbow-text-move {
-  0% { background-position: 0% 50%; }
-  100% { background-position: 200% 50%; }
-}
-
-/* 2. MYTHICAL BORDER WRAPPER */
-/* Khung chứa hiệu ứng viền */
+/* --- PERFORMANCE OPTIMIZED CONTAINER --- */
+/* Removed generic rotating borders for better FPS */
 .mythical-container {
   position: relative;
-  border-radius: 1.5rem; /* rounded-3xl */
-  padding: 4px; /* Space for the border */
-  isolation: isolate;
-  background: #0B0F19; /* Match bg */
-  overflow: visible; /* Để ánh sáng tỏa ra ngoài */
+  border-radius: 1rem;
+  background: #0B0F19;
+  border: 1px solid #1f2937; /* Simple border instead of animated gradient */
+  overflow: hidden; 
+  transform: translateZ(0);
 }
 
-/* Hiệu ứng viền cầu vồng nền */
-.mythical-container::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 1.5rem; 
-  padding: 2px;
-  background: linear-gradient(
-    45deg, 
-    #ff0000, #ff7300, #fffb00, #48ff00, #00ffd5, #002bff, #7a00ff, #ff00c8, #ff0000
-  );
-  background-size: 400%;
-  -webkit-mask: 
-     linear-gradient(#fff 0 0) content-box, 
-     linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  animation: border-rotate 4s linear infinite;
-  z-index: 1;
-  opacity: 0.5;
-}
+/* Only keep static gradients for VIPs to save battery */
+.vip-border { border: 1px solid #3b82f6; }
+.ssvip-border { border: 1px solid #eab308; box-shadow: 0 0 10px rgba(234, 179, 8, 0.1); }
+.ultra-border { border: 1px solid #a855f7; box-shadow: 0 0 10px rgba(168, 85, 247, 0.1); }
+.lifetime-border { border: 1px solid #ef4444; }
+.moderator-border { border: 1px solid #10b981; }
 
-@keyframes border-rotate {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
-/* 3. DRAGON & PHOENIX SPIRITS (Main Container) */
+/* --- SPIRIT PATH (Reduced complexity) --- */
 .spirit-path {
   position: absolute;
   top: 0;
@@ -92,110 +53,43 @@ input, textarea {
   width: 100%;
   height: 100%;
   pointer-events: none;
-  z-index: 20;
-  border-radius: 1.5rem;
+  z-index: 10;
+  border-radius: 1rem;
+  overflow: hidden;
+  opacity: 0.5; /* Dimmed */
 }
 
 .spirit {
   position: absolute;
-  width: 100px;
-  height: 4px;
-  background: white;
-  offset-path: rect(0% 100% 100% 0% round 1.5rem);
-  border-radius: 50%;
-  filter: blur(8px);
-  mix-blend-mode: screen;
+  width: 30px; /* Smaller */
+  height: 2px;
+  background: rgba(255,255,255,0.3);
+  offset-path: rect(0% 100% 100% 0% round 1rem);
 }
 
-/* 4. MINI SPIRITS (Progress Bar) */
-/* Container specifically for the progress bar path */
-.mini-spirit-container {
-  position: absolute;
-  inset: -8px; /* Expand slightly outside the bar */
-  pointer-events: none;
-  z-index: 30;
+.phoenix-spirit {
+  /* Simple movement, no heavy shadow */
+  animation: fly-around 10s linear infinite;
 }
 
-.mini-spirit {
-  position: absolute;
-  width: 40px; /* Shorter tail */
-  height: 3px;
-  offset-path: rect(0% 100% 100% 0% round 999px); /* Pill shape path */
-  border-radius: 50%;
-  filter: blur(4px);
-  mix-blend-mode: screen;
-}
-
-.mini-phoenix {
-  background: linear-gradient(90deg, transparent, #ff4d00, #ffcc00, #fff);
-  box-shadow: 0 0 10px 2px rgba(255, 100, 0, 0.8);
-  animation: fly-around-mini 1.5s linear infinite; /* Faster than main */
-}
-
-@keyframes fly-around-mini {
+@keyframes fly-around {
   0% { offset-distance: 0%; }
   100% { offset-distance: 100%; }
 }
 
-/* Neon Progress Fill */
-.neon-progress-fill {
-  background: linear-gradient(
-    90deg,
-    #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #8f00ff
-  );
-  background-size: 200% 100%;
-  box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
-  animation: rainbow-move 2s linear infinite;
-}
-
-
-/* PHƯỢNG HOÀNG (Lửa/Vàng) - Main App */
-.phoenix-spirit {
-  background: linear-gradient(90deg, transparent, #ff4d00, #ffcc00, #fff);
-  box-shadow: 0 0 20px 5px rgba(255, 100, 0, 0.6);
-  animation: fly-around 4s linear infinite;
-  opacity: 0.8;
-}
-
-/* RỒNG (Xanh/Cyan) - Main App */
-.dragon-spirit {
-  background: linear-gradient(90deg, transparent, #004dff, #00ffff, #fff);
-  box-shadow: 0 0 20px 5px rgba(0, 255, 255, 0.6);
-  animation: fly-around 4s linear infinite;
-  animation-delay: -2s; /* Chạy đối diện Phượng hoàng */
-}
-
-@keyframes fly-around {
-  0% {
-    offset-distance: 0%;
-  }
-  100% {
-    offset-distance: 100%;
-  }
-}
-
-/* Hiệu ứng tỏa sáng nền tổng thể */
+/* --- REMOVED AMBIENT GLOW (Major lag cause) --- */
 .ambient-glow {
-  position: absolute;
-  inset: -20px;
-  background: conic-gradient(
-    from 0deg,
-    #ff000040,
-    #ffff0040,
-    #00ff0040,
-    #00ffff40,
-    #0000ff40,
-    #ff00ff40,
-    #ff000040
-  );
-  filter: blur(40px);
-  z-index: -1;
-  animation: spin-slow 10s linear infinite;
-  border-radius: 30%;
-  opacity: 0.3;
+  display: none;
 }
 
-@keyframes spin-slow {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #0B0F19; 
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #374151; 
+  border-radius: 2px;
 }
