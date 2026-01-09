@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, VipLevel, AccountStatus } from '../types';
-import { Trash2, Save, ShieldAlert, Star, Zap, Lock, Unlock, AlertTriangle, Search, Activity, Skull, Database, UserCog } from 'lucide-react';
+import { Trash2, Save, ShieldAlert, Star, Zap, Lock, Unlock, AlertTriangle, Search, Activity, Skull, Database, UserCog, Plus } from 'lucide-react';
 import { Button } from './Button';
 
 interface AdminPanelProps {
@@ -37,19 +37,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
   // --- TOOLS ---
 
   const handleBuffStars = (username: string) => {
-     if (isModerator && buffAmount > 1000) {
+     const amount = Number(buffAmount);
+     
+     if (isModerator && amount > 1000) {
          alert("Người Kiểm Duyệt chỉ được buff tối đa 1000 sao/lần.");
          return;
      }
 
-     if (buffAmount < 1 || buffAmount > 999999) {
-         alert("Số lượng sao phải từ 1 đến 999,999");
+     if (isNaN(amount) || amount < 1) {
+         alert("Số lượng sao không hợp lệ.");
          return;
      }
+
+     // Admin unlimited, Mod limited logic applied above
+     if (!isModerator && amount > 999999999) {
+          alert("Số lượng quá lớn.");
+          return;
+     }
+
      const updated = users.map(u => {
          if (u.username === username) {
-             const newCredits = Math.min(u.credits + buffAmount, 999999999);
-             addLog(`Buffed ${buffAmount} stars to ${username}. Total: ${newCredits} (By ${currentUser.username})`);
+             const newCredits = Math.min(u.credits + amount, 99999999999); // Cap at reasonable max
+             addLog(`Buffed ${amount} stars to ${username}. Total: ${newCredits} (By ${currentUser.username})`);
              return { ...u, credits: newCredits };
          }
          return u;
@@ -213,7 +222,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
                   onChange={(e) => setBuffAmount(parseInt(e.target.value) || 0)}
                   className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-white w-24 text-center font-bold"
               />
-              <span className="text-gray-400 text-sm">Buff Amount {isModerator && '(Max 1000)'}</span>
+              <span className="text-gray-400 text-sm">Amount to Buff</span>
           </div>
 
           {/* Logs */}
@@ -275,6 +284,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
                 {/* VIP & CREDITS */}
                 <td className="p-5">
                     <div className="space-y-2">
+                         {/* VIP Select */}
                          <div className="flex items-center gap-2">
                             <select 
                                 value={user.vipLevel}
@@ -302,13 +312,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
                                 </button>
                             )}
                          </div>
-                         <div className="flex items-center gap-2">
-                            <span className="font-mono font-bold text-yellow-400">{user.credits.toLocaleString()}</span>
+
+                         {/* Credits & Prominent Buff Button */}
+                         <div className="flex items-center gap-3 whitespace-nowrap">
+                            <span className="font-mono font-bold text-yellow-400 min-w-[50px]">
+                                {user.credits.toLocaleString()}
+                            </span>
                             <button 
-                                onClick={() => handleBuffStars(user.username)}
-                                className="px-2 py-0.5 bg-green-600/20 text-green-400 text-[10px] rounded hover:bg-green-600/40 border border-green-600/30"
+                                onClick={(e) => {
+                                    e.stopPropagation(); // Stop row click
+                                    handleBuffStars(user.username);
+                                }}
+                                className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-green-900/50 transition-all active:scale-95 border border-green-500/50"
+                                title={`Cộng ngay ${buffAmount.toLocaleString()} sao`}
                             >
-                                +{buffAmount}
+                                <Plus size={12} strokeWidth={3} /> Buff {buffAmount.toLocaleString()}
                             </button>
                          </div>
                     </div>

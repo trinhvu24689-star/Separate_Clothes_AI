@@ -14,7 +14,18 @@ import { AutoPainter } from './components/AutoPainter';
 import { AdminChat } from './components/AdminChat';
 import { PublicChat } from './components/PublicChat';
 import { HistoryView } from './components/HistoryView';
-import { Wand2, Download, RefreshCw, Layers, Sparkles, Undo2, Redo2, Star, Menu, LogOut, Box, Key } from 'lucide-react';
+import { Wand2, Download, RefreshCw, Layers, Sparkles, Undo2, Redo2, Star, Menu, LogOut, Box, Key, AlertTriangle } from 'lucide-react';
+
+// Declare global interface for AI Studio
+declare global {
+  interface AIStudio {
+    openSelectKey: () => Promise<void>;
+    hasSelectedApiKey: () => Promise<boolean>;
+  }
+  interface Window {
+    aistudio?: AIStudio;
+  }
+}
 
 const SUGGESTED_PROMPTS = [
   { 
@@ -98,6 +109,7 @@ const App: React.FC = () => {
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [needsApiKey, setNeedsApiKey] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [hasAiStudio, setHasAiStudio] = useState(false);
   
   const [history, setHistory] = useState<HistoryState[]>([
     { prompt: prompt, resolution: resolution }
@@ -107,6 +119,13 @@ const App: React.FC = () => {
   const [processedHistory, setProcessedHistory] = useState<ProcessedHistoryItem[]>([]);
 
   const progressInterval = useRef<number | null>(null);
+
+  // Check for AI Studio environment
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.aistudio) {
+      setHasAiStudio(true);
+    }
+  }, []);
 
   // Auto-Login Check
   useEffect(() => {
@@ -250,15 +269,19 @@ const App: React.FC = () => {
     }
 
     // --- API KEY CHECK ---
-    // High resolutions (1240p+) or special models require explicit API key selection
     const isHighRes = ['1240p', '1440p', '2K', '4K', '8K'].includes(resolution);
     
-    if (isHighRes && (window as any).aistudio) {
-       const hasKey = await (window as any).aistudio.hasSelectedApiKey();
-       if (!hasKey) {
-          setNeedsApiKey(true);
-          // Don't proceed, show the selection UI
-          return;
+    // Only try to use aistudio if it exists
+    if (isHighRes && window.aistudio) {
+       try {
+           const hasKey = await window.aistudio.hasSelectedApiKey();
+           if (!hasKey) {
+              setNeedsApiKey(true);
+              return;
+           }
+       } catch (e) {
+           console.warn("Error checking API key:", e);
+           // Fallthrough if check fails
        }
     }
 
@@ -314,10 +337,10 @@ const App: React.FC = () => {
       }
 
     } catch (err: any) {
-      // Handle "Requested entity was not found" - usually means invalid key ID or project problem
-      if (err.message && (err.message.includes("Requested entity was not found") || err.message.includes("API Key"))) {
+      // Handle "Requested entity was not found" or general 403/401
+      if (err.message && (err.message.includes("Requested entity was not found") || err.message.includes("API Key") || err.message.includes("403"))) {
            setNeedsApiKey(true);
-           setError("API Key hiện tại không hợp lệ hoặc đã hết hạn. Vui lòng chọn lại key mới.");
+           setError("API Key không hợp lệ. Vui lòng chọn key mới.");
            setAppState(AppState.IDLE);
            return;
       }
@@ -329,11 +352,18 @@ const App: React.FC = () => {
   };
 
   const handleSelectApiKey = async () => {
-    if ((window as any).aistudio?.openSelectKey) {
-      await (window as any).aistudio.openSelectKey();
-      setNeedsApiKey(false);
-      // Immediately try generating again
-      handleGenerate();
+    if (window.aistudio?.openSelectKey) {
+      try {
+        await window.aistudio.openSelectKey();
+        setNeedsApiKey(false);
+        // Force a small delay to allow env propagation then retry
+        setTimeout(() => handleGenerate(), 500);
+      } catch (e) {
+        console.error("Selection failed", e);
+        alert("Không thể mở bảng chọn Key. Vui lòng thử lại.");
+      }
+    } else {
+        alert("Trình duyệt của bạn không hỗ trợ tính năng này. Vui lòng cấu hình API_KEY trong file .env");
     }
   };
 
@@ -507,10 +537,28 @@ const App: React.FC = () => {
                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-6 text-center animate-pulse">
                  <Key className="w-8 h-8 text-yellow-500 mx-auto mb-2" />
                  <p className="text-yellow-200 font-bold mb-1">Yêu cầu API Key</p>
-                 <p className="text-yellow-200/70 text-xs mb-4">Độ phân giải {resolution} cần sử dụng key cá nhân của bạn.</p>
-                 <Button onClick={handleSelectApiKey} className="w-full text-sm bg-yellow-600 hover:bg-yellow-500 text-black border-none">
-                     Chọn API Key Ngay
-                 </Button>
+                 
+                 {hasAiStudio ? (
+                     <>
+                        <p className="text-yellow-200/70 text-xs mb-4">Độ phân giải {resolution} cần sử dụng key cá nhân của bạn.</p>
+                        <Button onClick={handleSelectApiKey} className="w-full text-sm bg-yellow-600 hover:bg-yellow-500 text-black border-none cursor-pointer">
+                             Chọn API Key Ngay
+                        </Button>
+                     </>
+                 ) : (
+                     <>
+                        <p className="text-yellow-200/70 text-xs mb-4">
+                           Trình duyệt của bạn không hỗ trợ chọn Key tự động. 
+                           Vui lòng thêm <code>API_KEY</code> vào file <code>.env</code>.
+                        </p>
+                        <div className="bg-black/40 p-2 rounded text-[10px] font-mono text-left mb-2 text-gray-300">
+                           GEMINI_API_KEY=AIzaSy...
+                        </div>
+                        <Button onClick={() => setNeedsApiKey(false)} variant="secondary" className="w-full text-sm">
+                           Đã Cập Nhật (Thử Lại)
+                        </Button>
+                     </>
+                 )}
                </div>
              ) : (
                <Button 
@@ -523,7 +571,14 @@ const App: React.FC = () => {
                </Button>
              )}
              
-             {error && <div className="text-red-400 text-sm text-center bg-[#2D1A1A] p-3 rounded-xl border border-red-900/50">{error}</div>}
+             {error && (
+                 <div className="flex flex-col gap-2 text-center bg-[#2D1A1A] p-3 rounded-xl border border-red-900/50">
+                     <span className="text-red-400 text-sm font-bold flex items-center justify-center gap-2">
+                        <AlertTriangle size={16} /> Lỗi API
+                     </span>
+                     <span className="text-red-300/80 text-xs">{error}</span>
+                 </div>
+             )}
            </div>
         </div>
       </div>

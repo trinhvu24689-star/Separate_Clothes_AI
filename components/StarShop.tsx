@@ -317,9 +317,11 @@ export const StarShop: React.FC<StarShopProps> = ({ isOpen, onClose, onPurchase,
 
         {/* Content Area */}
         <div className="flex-1 overflow-y-auto p-6 relative">
-            {renderPaymentModal()}
             {activeTab === 'STARS' ? renderStarsTab() : renderVipTab()}
         </div>
+        
+        {/* Payment Modal Overlay - Moved outside scrollable area to overlay correctly */}
+        {renderPaymentModal()}
       </div>
     </div>
   );
