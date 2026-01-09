@@ -1,13 +1,13 @@
 import { GoogleGenAI } from "@google/genai";
 import { Resolution } from "../types";
 
-const getClient = () => {
-  // Always access the process.env directly to get the latest injected key
-  const apiKey = process.env.API_KEY;
+const getClient = (customKey?: string) => {
+  // Prioritize custom key if provided, otherwise use env key
+  const apiKey = customKey || process.env.API_KEY;
   
   if (!apiKey || apiKey.length === 0) {
-    console.error("API Key is missing. Please check Vercel Environment Variables.");
-    throw new Error("API Key chưa được cấu hình. Vui lòng thêm API_KEY vào biến môi trường hoặc chọn key.");
+    console.error("API Key is missing.");
+    throw new Error("API Key chưa được cấu hình. Vui lòng nhập API Key của bạn.");
   }
   return new GoogleGenAI({ apiKey });
 };
@@ -16,10 +16,11 @@ export const generateSeparatedImage = async (
   base64Data: string, 
   mimeType: string, 
   prompt: string,
-  resolution: Resolution
+  resolution: Resolution,
+  customApiKey?: string
 ): Promise<string> => {
-  // Always get a fresh client to pick up any new API keys
-  const ai = getClient();
+  // Always get a fresh client
+  const ai = getClient(customApiKey);
   
   // Clean base64 string
   const cleanBase64 = base64Data.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, '');
@@ -80,10 +81,42 @@ export const generateSeparatedImage = async (
     throw new Error("Không tạo được ảnh. Vui lòng thử lại.");
   } catch (error: any) {
     console.error("Gemini API Error:", error);
-    if (error.message && (error.message.includes("API key") || error.message.includes("403") || error.message.includes("401"))) {
-        throw new Error("API Key không hợp lệ hoặc đã hết hạn.");
+
+    // --- ERROR PARSING LOGIC ---
+    let errorStr = "";
+    if (typeof error === 'string') errorStr = error;
+    else if (error.message) errorStr = error.message;
+    else errorStr = JSON.stringify(error);
+
+    // 1. Check for Quota / Rate Limit (429) / Resource Exhausted
+    if (errorStr.includes("429") || errorStr.includes("RESOURCE_EXHAUSTED") || errorStr.includes("Quota") || errorStr.includes("limit")) {
+        // Specific advice for Pro model usage
+        if (['1240p', '1440p', '2K', '4K', '8K'].includes(resolution)) {
+            throw new Error(`⚠️ Hết lượt dùng thử model PRO (Quota Exceeded).\n\n👉 Hãy chuyển xuống độ phân giải "1040p" hoặc nhập API Key riêng của bạn.`);
+        }
+        throw new Error("⚠️ Hệ thống đang quá tải (Rate Limit). Vui lòng thử lại sau 1-2 phút hoặc nhập API Key riêng.");
     }
-    throw error;
+
+    // 2. Check for Auth errors
+    if (errorStr.includes("API key") || errorStr.includes("403") || errorStr.includes("401") || errorStr.includes("UNAUTHENTICATED")) {
+        throw new Error("🔑 API Key không hợp lệ. Vui lòng kiểm tra lại Key của bạn.");
+    }
+
+    // 3. Clean up raw JSON errors if any
+    const jsonMatch = errorStr.match(/\{.*\}/); 
+    if (jsonMatch) {
+        try {
+            const parsed = JSON.parse(jsonMatch[0]);
+            if (parsed.error && parsed.error.message) {
+                 if (parsed.error.message.includes("Quota")) {
+                     throw new Error(`⚠️ Hết lượt dùng thử (Quota Exceeded).\n👉 Hãy chuyển xuống độ phân giải "1040p" hoặc nhập API Key riêng.`);
+                 }
+                 throw new Error(`Lỗi Google API: ${parsed.error.message}`);
+            }
+        } catch (e) {}
+    }
+
+    throw new Error(`Lỗi không xác định: ${errorStr.substring(0, 100)}...`);
   }
 };
 
@@ -95,9 +128,10 @@ export const generateArtisticImage = async (
         detailLevel: number;
         creativity: number;
         customPrompt?: string;
-    }
+    },
+    customApiKey?: string
 ): Promise<string> => {
-    const ai = getClient();
+    const ai = getClient(customApiKey);
     const cleanBase64 = base64Data.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, '');
 
     const prompt = `
@@ -133,6 +167,9 @@ export const generateArtisticImage = async (
         console.error("Artistic Gen Error:", error);
          if (error.message && (error.message.includes("API key") || error.message.includes("403"))) {
             throw new Error("API Key không hợp lệ.");
+        }
+        if (error.message && (error.message.includes("429") || error.message.includes("Quota"))) {
+             throw new Error("Hệ thống đang bận (Quota). Vui lòng thử lại sau.");
         }
         throw error;
     }

@@ -14,7 +14,7 @@ import { AutoPainter } from './components/AutoPainter';
 import { AdminChat } from './components/AdminChat';
 import { PublicChat } from './components/PublicChat';
 import { HistoryView } from './components/HistoryView';
-import { Wand2, Download, RefreshCw, Layers, Sparkles, Undo2, Redo2, Star, Menu, LogOut, Box, Key, AlertTriangle } from 'lucide-react';
+import { Wand2, Download, RefreshCw, Layers, Sparkles, Undo2, Redo2, Star, Menu, LogOut, Box, Key, AlertTriangle, ArrowDownCircle, Save } from 'lucide-react';
 
 // Declare global interface for AI Studio
 declare global {
@@ -69,6 +69,7 @@ const DEFAULT_PROMPT = "Ghost mannequin effect. High-quality fashion photography
 const STORAGE_KEY_PROMPT = 'styleExtract_prompt';
 const STORAGE_KEY_RES = 'styleExtract_resolution';
 const STORAGE_KEY_HISTORY = 'styleExtract_history';
+const STORAGE_KEY_API = 'styleExtract_custom_api_key';
 
 export const formatStarBalance = (num: number) => {
     if (num >= 1000000000) return (num / 1000000000).toFixed(1).replace(/\.0$/, '') + ' T';
@@ -111,6 +112,11 @@ const App: React.FC = () => {
   const [progress, setProgress] = useState(0);
   const [hasAiStudio, setHasAiStudio] = useState(false);
   
+  // Custom API Key State
+  const [userApiKey, setUserApiKey] = useState(() => {
+      return localStorage.getItem(STORAGE_KEY_API) || '';
+  });
+  
   const [history, setHistory] = useState<HistoryState[]>([
     { prompt: prompt, resolution: resolution }
   ]);
@@ -126,6 +132,13 @@ const App: React.FC = () => {
       setHasAiStudio(true);
     }
   }, []);
+
+  // Save Custom Key
+  const handleSaveKey = () => {
+      localStorage.setItem(STORAGE_KEY_API, userApiKey);
+      setNeedsApiKey(false);
+      handleGenerate(); // Retry immediately
+  };
 
   // Auto-Login Check
   useEffect(() => {
@@ -271,8 +284,8 @@ const App: React.FC = () => {
     // --- API KEY CHECK ---
     const isHighRes = ['1240p', '1440p', '2K', '4K', '8K'].includes(resolution);
     
-    // Only try to use aistudio if it exists
-    if (isHighRes && window.aistudio) {
+    // Only try to use aistudio if it exists AND no custom key is set
+    if (isHighRes && window.aistudio && !userApiKey) {
        try {
            const hasKey = await window.aistudio.hasSelectedApiKey();
            if (!hasKey) {
@@ -290,11 +303,13 @@ const App: React.FC = () => {
     setError(null);
 
     try {
+      // Pass userApiKey (can be empty, service will use env)
       const generatedImageBase64 = await generateSeparatedImage(
         uploadedImage.base64,
         uploadedImage.mimeType,
         prompt,
-        resolution
+        resolution,
+        userApiKey
       );
       
       setCurrentUser(prev => prev ? ({
@@ -337,15 +352,20 @@ const App: React.FC = () => {
       }
 
     } catch (err: any) {
-      // Handle "Requested entity was not found" or general 403/401
-      if (err.message && (err.message.includes("Requested entity was not found") || err.message.includes("API Key") || err.message.includes("403"))) {
-           setNeedsApiKey(true);
-           setError("API Key không hợp lệ. Vui lòng chọn key mới.");
+      // Handle known key errors or quota
+      const errMsg = err.message || "";
+      if (errMsg.includes("API Key") || errMsg.includes("403") || errMsg.includes("Quota") || errMsg.includes("Rate Limit")) {
+           setNeedsApiKey(true); // Trigger UI to ask for key
+           if (errMsg.includes("Quota")) {
+                setError("Hết lượt miễn phí. Vui lòng nhập Key riêng hoặc giảm độ phân giải.");
+           } else {
+                setError("API Key không hợp lệ hoặc đã hết hạn.");
+           }
            setAppState(AppState.IDLE);
            return;
       }
 
-      setError(err.message || "Đã xảy ra lỗi không mong muốn.");
+      setError(errMsg || "Đã xảy ra lỗi không mong muốn.");
       setAppState(AppState.ERROR);
       setProgress(0);
     }
@@ -363,7 +383,7 @@ const App: React.FC = () => {
         alert("Không thể mở bảng chọn Key. Vui lòng thử lại.");
       }
     } else {
-        alert("Trình duyệt của bạn không hỗ trợ tính năng này. Vui lòng cấu hình API_KEY trong file .env");
+        alert("Trình duyệt của bạn không hỗ trợ tính năng này. Vui lòng sử dụng ô nhập Key bên dưới.");
     }
   };
 
@@ -542,23 +562,31 @@ const App: React.FC = () => {
                      <>
                         <p className="text-yellow-200/70 text-xs mb-4">Độ phân giải {resolution} cần sử dụng key cá nhân của bạn.</p>
                         <Button onClick={handleSelectApiKey} className="w-full text-sm bg-yellow-600 hover:bg-yellow-500 text-black border-none cursor-pointer">
-                             Chọn API Key Ngay
+                             Chọn API Key Nhanh (AI Studio)
                         </Button>
+                        <div className="my-2 text-xs text-gray-400">- HOẶC -</div>
                      </>
-                 ) : (
-                     <>
-                        <p className="text-yellow-200/70 text-xs mb-4">
-                           Trình duyệt của bạn không hỗ trợ chọn Key tự động. 
-                           Vui lòng thêm <code>API_KEY</code> vào file <code>.env</code>.
-                        </p>
-                        <div className="bg-black/40 p-2 rounded text-[10px] font-mono text-left mb-2 text-gray-300">
-                           GEMINI_API_KEY=AIzaSy...
-                        </div>
-                        <Button onClick={() => setNeedsApiKey(false)} variant="secondary" className="w-full text-sm">
-                           Đã Cập Nhật (Thử Lại)
-                        </Button>
-                     </>
-                 )}
+                 ) : null}
+
+                 {/* Manual Input Fallback */}
+                 <div className="bg-black/30 p-3 rounded-xl border border-gray-700">
+                     <p className="text-yellow-200/70 text-xs mb-2">Nhập API Key thủ công (Lấy tại aistudio.google.com):</p>
+                     <div className="flex gap-2">
+                         <input 
+                             type="password" 
+                             value={userApiKey}
+                             onChange={(e) => setUserApiKey(e.target.value)}
+                             placeholder="Dán API Key vào đây..."
+                             className="flex-1 bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-yellow-500"
+                         />
+                         <button 
+                             onClick={handleSaveKey}
+                             className="bg-yellow-600 hover:bg-yellow-500 text-black px-3 py-2 rounded-lg font-bold text-xs flex items-center gap-1"
+                         >
+                             <Save size={14}/> Lưu
+                         </button>
+                     </div>
+                 </div>
                </div>
              ) : (
                <Button 
@@ -572,11 +600,23 @@ const App: React.FC = () => {
              )}
              
              {error && (
-                 <div className="flex flex-col gap-2 text-center bg-[#2D1A1A] p-3 rounded-xl border border-red-900/50">
-                     <span className="text-red-400 text-sm font-bold flex items-center justify-center gap-2">
-                        <AlertTriangle size={16} /> Lỗi API
-                     </span>
-                     <span className="text-red-300/80 text-xs">{error}</span>
+                 <div className="flex flex-col gap-3 text-center bg-[#2D1A1A] p-4 rounded-xl border border-red-900/50 animate-in fade-in slide-in-from-top-2">
+                     <div className="flex items-center justify-center gap-2 text-red-400 text-sm font-bold uppercase tracking-wider">
+                        <AlertTriangle size={18} /> Lỗi API
+                     </div>
+                     <span className="text-red-200 text-xs leading-relaxed whitespace-pre-line">{error}</span>
+                     
+                     {/* Suggestion Action for Quota Errors */}
+                     {(error.includes("Quota") || error.includes("1040p")) && (
+                         <div className="flex gap-2 justify-center mt-2 flex-wrap">
+                             <button 
+                                onClick={() => { setResolution('1040p'); setError(null); handleGenerate(); }}
+                                className="text-xs flex items-center gap-2 bg-red-900/50 hover:bg-red-800 text-white px-4 py-2 rounded-lg border border-red-700 transition-colors shadow-lg animate-pulse"
+                             >
+                                 <ArrowDownCircle size={14} /> Xuống 1040p (Fix Ngay)
+                             </button>
+                         </div>
+                     )}
                  </div>
              )}
            </div>
@@ -619,101 +659,6 @@ const App: React.FC = () => {
                <Button variant="outline" onClick={() => setAppState(AppState.IDLE)} icon={<RefreshCw size={16}/>}>Làm Mới</Button>
              </div>
           )}
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="min-h-screen bg-[#0B0F19] text-gray-100 font-sans pb-10 overflow-x-hidden selection:bg-purple-500/30">
-      {/* Notifications */}
-      {notification && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg text-sm font-bold flex items-center gap-2 border border-gray-700">
-           <Sparkles size={16} className="text-yellow-300" /> {notification}
-        </div>
-      )}
-
-      <StarShop 
-        isOpen={showShop} 
-        onClose={() => setShowShop(false)} 
-        onPurchase={handlePurchase} 
-        currentVipLevel={currentUser.vipLevel}
-      />
-      
-      <Sidebar 
-        isOpen={isSidebarOpen} 
-        onClose={() => setIsSidebarOpen(false)} 
-        currentView={currentView as any}
-        onChangeView={(v) => setCurrentView(v)}
-        onOpenShop={() => setShowShop(true)}
-        vipLevel={currentUser.vipLevel}
-        totalRecharged={currentUser.totalRecharged || 0}
-      />
-
-      <div className="relative max-w-7xl mx-auto px-4 py-4 z-10">
-         {/* Simple Header */}
-         <header className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-               <button onClick={() => setIsSidebarOpen(true)} className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors"><Menu size={24}/></button>
-               <button onClick={() => handleLogout()} className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors"><LogOut size={20}/></button>
-            </div>
-            
-            <div className="absolute left-1/2 -translate-x-1/2 text-center">
-                 <h1 className="text-2xl md:text-3xl font-black text-white font-['Caveat']">
-                  Separate Clothes AI 2.0
-               </h1>
-            </div>
-            
-            <button onClick={() => setShowShop(true)} className="flex items-center gap-2 bg-[#1e293b] px-4 py-2 rounded-full border border-gray-700 hover:border-blue-500 transition-colors group">
-               <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
-               <span className="text-white font-bold text-sm">{formatStarBalance(currentUser.credits)}</span>
-               <div className="bg-blue-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shadow-md group-hover:scale-105 transition-transform">+</div>
-            </button>
-         </header>
-
-         {/* MAIN CONTENT WRAPPER - Optimized */}
-         <div className={getContainerStyle()}>
-            <div className="spirit-path hidden md:block"><div className="spirit phoenix-spirit"></div></div>
-            
-            <div className={`bg-[#0f1522] rounded-2xl p-4 md:p-6 min-h-[80vh] relative z-10`}>
-               {currentView === 'HOME' && renderHome()}
-               {currentView === 'PROFILE' && (
-                  <ProfileView 
-                     profile={currentUser.profile}
-                     vipLevel={currentUser.vipLevel}
-                     credits={currentUser.credits}
-                     onUpdateAvatar={handleUpdateAvatar}
-                     onEquipFrame={(id) => setCurrentUser(prev => prev ? ({...prev, profile: {...prev.profile, currentFrameId: id}}) : null)}
-                     onBuyFrame={(f) => {
-                        if (currentUser.credits >= (f.cost || 0)) {
-                           setCurrentUser(prev => prev ? ({
-                               ...prev,
-                               credits: prev.credits - (f.cost || 0),
-                               profile: { ...prev.profile, ownedFrameIds: [...prev.profile.ownedFrameIds, f.id], currentFrameId: f.id }
-                           }) : null);
-                        }
-                     }}
-                     onWatchAd={() => alert("Đã xem QC (Giả lập)")}
-                  />
-               )}
-               {currentView === 'HISTORY' && (
-                  <HistoryView 
-                     history={processedHistory}
-                     onSelect={handleHistorySelect}
-                     onClear={() => { setProcessedHistory([]); localStorage.removeItem(STORAGE_KEY_HISTORY); }}
-                     onDeleteItem={handleHistoryDeleteOne}
-                     vipLevel={currentUser.vipLevel}
-                     maxStorageBytes={STORAGE_LIMITS[currentUser.vipLevel]}
-                     usedStorageBytes={calculateTotalHistorySize(processedHistory)}
-                     onOpenShop={() => setShowShop(true)}
-                  />
-               )}
-               {currentView === 'DRAW' && <FreeDraw vipLevel={currentUser.vipLevel} onOpenShop={() => setShowShop(true)} />}
-               {currentView === 'AUTO_PAINT' && <AutoPainter vipLevel={currentUser.vipLevel} onOpenShop={() => setShowShop(true)} />}
-               {currentView === 'ADMIN_CHAT' && <AdminChat currentUser={currentUser} onOpenShop={() => setShowShop(true)} />}
-               {currentView === 'PUBLIC_CHAT' && <PublicChat currentUser={currentUser} onUpdateUser={setCurrentUser} onOpenShop={() => setShowShop(true)} />}
-               {currentView === 'ADMIN' && <AdminPanel currentUser={currentUser} />}
-            </div>
-         </div>
       </div>
     </div>
   );
