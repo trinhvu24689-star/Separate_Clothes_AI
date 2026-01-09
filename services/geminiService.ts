@@ -1,9 +1,19 @@
 import { GoogleGenAI } from "@google/genai";
 import { Resolution } from "../types";
 
+// Safe access to API Key preventing "process is not defined" crashes
 const getClient = (customKey?: string) => {
-  // Prioritize custom key if provided, otherwise use env key
-  const apiKey = customKey || process.env.API_KEY;
+  let apiKey = customKey;
+  
+  if (!apiKey) {
+      try {
+          // Vite replaces process.env.API_KEY with string at build time
+          apiKey = process.env.API_KEY; 
+      } catch (e) {
+          // Fallback if process isn't defined
+          console.warn("Could not access process.env");
+      }
+  }
   
   if (!apiKey || apiKey.length === 0) {
     console.error("API Key is missing.");

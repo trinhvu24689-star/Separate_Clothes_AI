@@ -95,14 +95,18 @@ const App: React.FC = () => {
   
   // Settings
   const [prompt, setPrompt] = useState(() => {
-    return localStorage.getItem(STORAGE_KEY_PROMPT) || DEFAULT_PROMPT;
+    try {
+        return localStorage.getItem(STORAGE_KEY_PROMPT) || DEFAULT_PROMPT;
+    } catch { return DEFAULT_PROMPT; }
   });
   
   const [resolution, setResolution] = useState<Resolution>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_RES);
-    return (saved && RESOLUTIONS.includes(saved as Resolution)) 
-      ? (saved as Resolution) 
-      : '1040p';
+    try {
+        const saved = localStorage.getItem(STORAGE_KEY_RES);
+        return (saved && RESOLUTIONS.includes(saved as Resolution)) 
+          ? (saved as Resolution) 
+          : '1040p';
+    } catch { return '1040p'; }
   });
 
   const [showShop, setShowShop] = useState(false);
@@ -114,7 +118,9 @@ const App: React.FC = () => {
   
   // Custom API Key State
   const [userApiKey, setUserApiKey] = useState(() => {
-      return localStorage.getItem(STORAGE_KEY_API) || '';
+      try {
+          return localStorage.getItem(STORAGE_KEY_API) || '';
+      } catch { return ''; }
   });
   
   const [history, setHistory] = useState<HistoryState[]>([
@@ -140,18 +146,24 @@ const App: React.FC = () => {
       handleGenerate(); // Retry immediately
   };
 
-  // Auto-Login Check
+  // Auto-Login Check with Safety
   useEffect(() => {
-    const rememberedUsername = localStorage.getItem('styleExtract_remember_user');
-    if (rememberedUsername && !currentUser) {
-        const usersStr = localStorage.getItem('styleExtract_users_db');
-        if (usersStr) {
-            const users: User[] = JSON.parse(usersStr);
-            const user = users.find(u => u.username === rememberedUsername);
-            if (user && user.status !== 'BANNED') {
-                setCurrentUser(user);
+    try {
+        const rememberedUsername = localStorage.getItem('styleExtract_remember_user');
+        if (rememberedUsername && !currentUser) {
+            const usersStr = localStorage.getItem('styleExtract_users_db');
+            if (usersStr) {
+                const users: User[] = JSON.parse(usersStr);
+                const user = users.find(u => u.username === rememberedUsername);
+                if (user && user.status !== 'BANNED') {
+                    setCurrentUser(user);
+                }
             }
         }
+    } catch (e) {
+        console.error("Auto login error:", e);
+        // Fallback: clear remember to avoid loop
+        localStorage.removeItem('styleExtract_remember_user');
     }
   }, []);
 
@@ -164,6 +176,7 @@ const App: React.FC = () => {
           }
       } catch (e) {
           console.error("Failed to load history", e);
+          setProcessedHistory([]);
       }
   }, []);
 
@@ -181,10 +194,12 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (currentUser) {
-      const usersStr = localStorage.getItem('styleExtract_users_db');
-      const users: User[] = usersStr ? JSON.parse(usersStr) : [];
-      const updatedUsers = users.map(u => u.username === currentUser.username ? currentUser : u);
-      localStorage.setItem('styleExtract_users_db', JSON.stringify(updatedUsers));
+      try {
+          const usersStr = localStorage.getItem('styleExtract_users_db');
+          const users: User[] = usersStr ? JSON.parse(usersStr) : [];
+          const updatedUsers = users.map(u => u.username === currentUser.username ? currentUser : u);
+          localStorage.setItem('styleExtract_users_db', JSON.stringify(updatedUsers));
+      } catch (e) { console.error("Save user error", e); }
     }
   }, [currentUser]);
 
@@ -472,196 +487,341 @@ const App: React.FC = () => {
     }
   };
 
-  if (!currentUser) {
-      return <Auth onLogin={handleLogin} />;
-  }
-
-  // --- RENDER HOME ---
   const renderHome = () => (
-    <div className="grid lg:grid-cols-2 gap-6 items-start animate-in fade-in duration-300">
-      {/* Left Column */}
-      <div className="space-y-6">
-        {/* Upload Container */}
-        <div className="bg-[#131B2C] border border-gray-800 rounded-3xl p-6 shadow-md relative overflow-hidden group">
-           <div className="flex items-center gap-2 mb-4">
-              <Layers className="text-purple-400 w-5 h-5"/>
-              <h3 className="text-white font-bold text-lg">Ảnh Gốc</h3>
-           </div>
-           
-           {!uploadedImage ? (
-             <ImageUploader onUpload={handleUpload} />
-           ) : (
-             <div className="relative rounded-2xl overflow-hidden bg-black/40 aspect-square group border border-gray-700 shadow-md">
-               <img src={uploadedImage.previewUrl} alt="Original" className="w-full h-full object-contain"/>
-               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                 <Button variant="secondary" onClick={handleReset} icon={<RefreshCw className="w-4 h-4" />}>
-                   Chọn ảnh khác
-                 </Button>
-               </div>
-             </div>
-           )}
-        </div>
-
-        {/* Controls */}
-        <div className={`bg-[#131B2C] border border-gray-800 rounded-3xl p-6 shadow-md ${!uploadedImage ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
-           <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl text-white font-['Caveat'] flex items-center gap-2">
-                 Separate Clothes AI 2.0
-              </h2>
-              <div className="flex gap-2">
-                  <button onClick={handleUndo} disabled={historyIndex <= 0} className="p-2 text-gray-400 hover:text-white bg-gray-900 rounded-lg disabled:opacity-30"><Undo2 size={16}/></button>
-                  <button onClick={handleRedo} disabled={historyIndex >= history.length - 1} className="p-2 text-gray-400 hover:text-white bg-gray-900 rounded-lg disabled:opacity-30"><Redo2 size={16}/></button>
-              </div>
-           </div>
-          
-           <div className="space-y-6">
-             {/* Resolution Grid */}
-             <div>
-                <div className="grid grid-cols-4 gap-2">
-                    {RESOLUTIONS.map((res) => (
-                    <button
-                        key={res}
-                        onClick={() => changeResolution(res)}
-                        className={`px-1 py-3 text-[10px] md:text-xs font-bold rounded-xl border transition-colors flex flex-col items-center justify-center gap-1 ${
-                        resolution === res 
-                        ? 'bg-[#A855F7] border-[#A855F7] text-white' 
-                        : 'bg-[#1e293b] border-gray-700 text-gray-400 hover:bg-gray-800'
-                        }`}
-                    >
-                        <span>{res}</span>
-                        <span className="text-[9px] font-normal opacity-70">{COST_MAP[res]} Stars</span>
-                    </button>
-                    ))}
-                </div>
-             </div>
-
-             <div>
-                <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">GỢI Ý PROMPT</label>
-                <div className="flex flex-col gap-2">
-                    {SUGGESTED_PROMPTS.map((p, idx) => (
-                    <button key={idx} onClick={() => selectPrompt(p.value)} className="text-xs px-4 py-3 rounded-xl bg-[#1e293b] hover:bg-gray-800 text-gray-300 border border-gray-700 transition-colors text-left">
-                        {p.label}
-                    </button>
-                    ))}
-                </div>
-             </div>
-
-             <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                className="w-full bg-[#1e293b] border border-gray-700 rounded-xl p-4 text-gray-200 text-sm h-32 resize-none focus:border-purple-500 outline-none transition-colors"
-                placeholder="Nhập mô tả chi tiết..."
-             />
-            
-             {needsApiKey ? (
-               <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-6 text-center animate-pulse">
-                 <Key className="w-8 h-8 text-yellow-500 mx-auto mb-2" />
-                 <p className="text-yellow-200 font-bold mb-1">Yêu cầu API Key</p>
-                 
-                 {hasAiStudio ? (
-                     <>
-                        <p className="text-yellow-200/70 text-xs mb-4">Độ phân giải {resolution} cần sử dụng key cá nhân của bạn.</p>
-                        <Button onClick={handleSelectApiKey} className="w-full text-sm bg-yellow-600 hover:bg-yellow-500 text-black border-none cursor-pointer">
-                             Chọn API Key Nhanh (AI Studio)
-                        </Button>
-                        <div className="my-2 text-xs text-gray-400">- HOẶC -</div>
-                     </>
-                 ) : null}
-
-                 {/* Manual Input Fallback */}
-                 <div className="bg-black/30 p-3 rounded-xl border border-gray-700">
-                     <p className="text-yellow-200/70 text-xs mb-2">Nhập API Key thủ công (Lấy tại aistudio.google.com):</p>
-                     <div className="flex gap-2">
-                         <input 
-                             type="password" 
-                             value={userApiKey}
-                             onChange={(e) => setUserApiKey(e.target.value)}
-                             placeholder="Dán API Key vào đây..."
-                             className="flex-1 bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-yellow-500"
-                         />
-                         <button 
-                             onClick={handleSaveKey}
-                             className="bg-yellow-600 hover:bg-yellow-500 text-black px-3 py-2 rounded-lg font-bold text-xs flex items-center gap-1"
-                         >
-                             <Save size={14}/> Lưu
-                         </button>
-                     </div>
-                 </div>
-               </div>
-             ) : (
-               <Button 
-                 onClick={handleGenerate} 
-                 isLoading={appState === AppState.PROCESSING}
-                 className="w-full py-4 text-base font-bold bg-[#8B5CF6] hover:bg-[#7C3AED] shadow-lg shadow-purple-500/20 rounded-xl text-white"
-                 disabled={currentUser.credits < COST_MAP[resolution]}
-               >
-                 {appState === AppState.PROCESSING ? 'Đang Xử Lý...' : `Tách Đối Tượng (-${COST_MAP[resolution]} Stars)`}
-               </Button>
-             )}
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      
+      {/* 1. Prompt & History Controls */}
+      <div className="bg-[#131B2C] p-4 rounded-2xl border border-gray-800 shadow-xl flex flex-col md:flex-row gap-4 items-center justify-between">
+         <div className="flex items-center gap-2 w-full md:w-auto">
+             <button onClick={handleUndo} disabled={historyIndex <= 0} className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-30 transition-colors text-white"><Undo2 size={20}/></button>
+             <button onClick={handleRedo} disabled={historyIndex >= history.length - 1} className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-30 transition-colors text-white"><Redo2 size={20}/></button>
+             <div className="h-8 w-px bg-gray-700 mx-2"></div>
              
-             {error && (
-                 <div className="flex flex-col gap-3 text-center bg-[#2D1A1A] p-4 rounded-xl border border-red-900/50 animate-in fade-in slide-in-from-top-2">
-                     <div className="flex items-center justify-center gap-2 text-red-400 text-sm font-bold uppercase tracking-wider">
-                        <AlertTriangle size={18} /> Lỗi API
-                     </div>
-                     <span className="text-red-200 text-xs leading-relaxed whitespace-pre-line">{error}</span>
-                     
-                     {/* Suggestion Action for Quota Errors */}
-                     {(error.includes("Quota") || error.includes("1040p")) && (
-                         <div className="flex gap-2 justify-center mt-2 flex-wrap">
-                             <button 
-                                onClick={() => { setResolution('1040p'); setError(null); handleGenerate(); }}
-                                className="text-xs flex items-center gap-2 bg-red-900/50 hover:bg-red-800 text-white px-4 py-2 rounded-lg border border-red-700 transition-colors shadow-lg animate-pulse"
-                             >
-                                 <ArrowDownCircle size={14} /> Xuống 1040p (Fix Ngay)
-                             </button>
-                         </div>
-                     )}
-                 </div>
-             )}
-           </div>
-        </div>
+             <div className="relative flex-1 md:w-96 group">
+                <input 
+                  type="text" 
+                  value={prompt}
+                  onChange={(e) => {
+                      setPrompt(e.target.value);
+                      addToHistory(e.target.value, resolution);
+                  }}
+                  className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-purple-500 transition-all shadow-inner"
+                  placeholder="Mô tả yêu cầu tách..."
+                />
+             </div>
+         </div>
+         
+         <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 w-full md:w-auto scrollbar-hide">
+            {SUGGESTED_PROMPTS.map((p, i) => (
+                <button 
+                  key={i}
+                  onClick={() => selectPrompt(p.value)}
+                  className="whitespace-nowrap px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-xs text-gray-400 hover:text-white hover:border-purple-500 transition-all"
+                >
+                    {p.label}
+                </button>
+            ))}
+         </div>
       </div>
 
-      {/* Right Column (Result) */}
-      <div className="bg-[#131B2C] border border-gray-800 rounded-3xl p-6 shadow-md min-h-[600px] flex flex-col relative overflow-hidden">
-          <div className="flex-1 rounded-2xl bg-[url('https://assets.codepen.io/1480814/checkerboard.svg')] bg-repeat bg-center relative flex items-center justify-center overflow-hidden border border-dashed border-gray-700">
-             {appState === AppState.PROCESSING && (
-                <div className="absolute inset-0 bg-black/80 z-10 flex flex-col items-center justify-center">
-                   <div className="text-5xl font-black text-white mb-4 animate-pulse">
-                        {Math.round(progress)}%
-                   </div>
-                   <div className="w-64 h-2 bg-gray-800 rounded-full overflow-hidden">
-                       <div 
-                           className="h-full bg-purple-600 rounded-full" 
-                           style={{width: `${progress}%`}}
-                       ></div>
-                   </div>
-                   <p className="text-gray-400 text-sm mt-4">AI đang phân tích & tách nền...</p>
-                </div>
-             )}
-             
-             {resultImage && uploadedImage ? (
-                <div className="w-full h-full animate-in fade-in zoom-in duration-300">
-                   <ImageComparison beforeImage={uploadedImage.previewUrl} afterImage={resultImage} />
-                </div>
-             ) : (
-                <div className="text-gray-500 text-sm flex flex-col items-center opacity-50">
-                   <Box size={64} className="mb-4 text-gray-700"/>
-                   <span className="text-gray-600">Kết quả sẽ hiện ở đây</span>
-                </div>
-             )}
-          </div>
+      {/* 2. Main Workspace */}
+      <div className="grid lg:grid-cols-12 gap-6">
           
-          {resultImage && (
-             <div className="mt-4 flex gap-3 animate-in fade-in slide-in-from-bottom-2">
-               <Button onClick={downloadImage} className="flex-1 shadow-md" icon={<Download size={16}/>}>Tải Về</Button>
-               <Button variant="outline" onClick={() => setAppState(AppState.IDLE)} icon={<RefreshCw size={16}/>}>Làm Mới</Button>
+          {/* Left Panel: Upload & Preview */}
+          <div className="lg:col-span-8 flex flex-col gap-4">
+             <div className="bg-[#131B2C] border border-gray-800 rounded-3xl p-1 shadow-2xl relative min-h-[500px] flex flex-col">
+                
+                {/* Toolbar inside canvas */}
+                <div className="absolute top-4 left-4 z-20 flex gap-2">
+                   {uploadedImage && (
+                       <button onClick={handleReset} className="p-2 bg-black/60 backdrop-blur text-white rounded-lg hover:bg-red-500/80 transition-colors" title="Reset">
+                           <RefreshCw size={16} />
+                       </button>
+                   )}
+                </div>
+
+                {/* Main Content Area */}
+                <div className="flex-1 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-fixed rounded-[20px] overflow-hidden relative flex items-center justify-center">
+                    
+                    {!uploadedImage ? (
+                        <div className="p-8 w-full max-w-xl">
+                            <ImageUploader onUpload={handleUpload} />
+                        </div>
+                    ) : (
+                        <>
+                           {appState === AppState.SUCCESS && resultImage ? (
+                               <ImageComparison beforeImage={uploadedImage.previewUrl} afterImage={resultImage} />
+                           ) : (
+                               <div className="relative w-full h-full flex items-center justify-center p-4">
+                                   <img 
+                                      src={uploadedImage.previewUrl} 
+                                      alt="Original" 
+                                      className={`max-w-full max-h-full object-contain shadow-2xl transition-all duration-700 ${appState === AppState.PROCESSING ? 'scale-95 blur-sm opacity-50' : ''}`} 
+                                   />
+                                   
+                                   {/* Processing Overlay */}
+                                   {appState === AppState.PROCESSING && (
+                                       <div className="absolute inset-0 flex flex-col items-center justify-center z-30">
+                                            <div className="relative w-32 h-32 mb-8">
+                                                <div className="absolute inset-0 border-4 border-purple-500/30 rounded-full animate-ping"></div>
+                                                <div className="absolute inset-0 border-4 border-t-purple-500 rounded-full animate-spin"></div>
+                                                <div className="absolute inset-0 flex items-center justify-center">
+                                                    <span className="text-xl font-black text-white">{Math.round(progress)}%</span>
+                                                </div>
+                                            </div>
+                                            <h3 className="text-2xl font-bold text-white mb-2 animate-pulse">AI Đang Xử Lý...</h3>
+                                            <p className="text-purple-300 text-sm max-w-xs text-center">
+                                                Đang phân tích cấu trúc 3D và tách nền phức tạp. Vui lòng đợi.
+                                            </p>
+                                       </div>
+                                   )}
+                               </div>
+                           )}
+                        </>
+                    )}
+                </div>
              </div>
-          )}
+          </div>
+
+          {/* Right Panel: Controls */}
+          <div className="lg:col-span-4 space-y-4">
+              
+              {/* Status Card */}
+              <div className="bg-[#131B2C] p-6 rounded-3xl border border-gray-800 shadow-xl">
+                  <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                      <Layers className="text-purple-500" /> Cấu Hình Render
+                  </h3>
+                  
+                  {/* Resolution Selector */}
+                  <div className="mb-6">
+                      <label className="text-xs font-bold text-gray-500 uppercase mb-3 block">Độ Phân Giải Output</label>
+                      <div className="grid grid-cols-2 gap-2">
+                          {RESOLUTIONS.map((res) => {
+                              const cost = COST_MAP[res];
+                              const isSelected = resolution === res;
+                              const isPro = ['1240p', '1440p', '2K', '4K', '8K'].includes(res);
+                              
+                              return (
+                                  <button
+                                    key={res}
+                                    onClick={() => changeResolution(res)}
+                                    className={`relative p-3 rounded-xl border text-left transition-all duration-200 group overflow-hidden ${
+                                        isSelected 
+                                        ? 'bg-purple-600/20 border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.3)]' 
+                                        : 'bg-gray-900 border-gray-700 hover:border-gray-500'
+                                    }`}
+                                  >
+                                      <div className={`text-sm font-black mb-1 ${isSelected ? 'text-white' : 'text-gray-300'}`}>{res}</div>
+                                      <div className="flex items-center justify-between">
+                                          <span className={`text-[10px] font-bold ${isSelected ? 'text-purple-200' : 'text-gray-500'}`}>
+                                              {cost} Credits
+                                          </span>
+                                          {isPro && <span className="text-[9px] bg-yellow-500 text-black px-1 rounded font-bold">PRO</span>}
+                                      </div>
+                                  </button>
+                              )
+                          })}
+                      </div>
+                  </div>
+
+                  {/* API Key Input (Conditional) */}
+                  {(['1240p', '1440p', '2K', '4K', '8K'].includes(resolution) || needsApiKey) && (
+                      <div className="mb-6 animate-in fade-in slide-in-from-top-2">
+                          <div className="flex justify-between items-center mb-2">
+                             <label className="text-xs font-bold text-yellow-500 uppercase flex items-center gap-1">
+                                <Key size={12}/> API Key Riêng (Bắt buộc cho PRO)
+                             </label>
+                             <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-[10px] text-blue-400 hover:underline">Lấy Key ở đâu?</a>
+                          </div>
+                          
+                          {/* AI Studio Key Selection Button */}
+                          {hasAiStudio && (
+                            <Button 
+                              onClick={handleSelectApiKey}
+                              className="w-full mb-3 text-sm py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500"
+                              icon={<Key size={14} />}
+                            >
+                                Chọn Key từ Google AI Studio
+                            </Button>
+                          )}
+                          
+                          <div className="relative">
+                              <input 
+                                type="password"
+                                value={userApiKey}
+                                onChange={(e) => setUserApiKey(e.target.value)}
+                                className="w-full bg-black/30 border border-yellow-500/30 rounded-xl px-4 py-3 text-sm text-yellow-200 placeholder-yellow-500/20 focus:border-yellow-500 outline-none"
+                                placeholder="Hoặc dán API Key của bạn vào đây..."
+                              />
+                              {userApiKey && (
+                                  <button onClick={handleSaveKey} className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-yellow-500/20 text-yellow-500 rounded-lg hover:bg-yellow-500 hover:text-black transition-colors">
+                                      <Save size={14} />
+                                  </button>
+                              )}
+                          </div>
+                      </div>
+                  )}
+
+                  {/* Error Message */}
+                  {error && (
+                      <div className="mb-4 p-4 bg-red-500/10 border border-red-500/50 rounded-xl flex items-start gap-3">
+                          <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={18} />
+                          <div className="text-xs text-red-200">
+                              <strong className="block text-red-400 font-bold mb-1">Lỗi Xử Lý</strong>
+                              {error}
+                          </div>
+                      </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="space-y-3">
+                      {appState === AppState.SUCCESS ? (
+                          <>
+                            <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-xl mb-4">
+                                <p className="text-green-400 text-sm font-bold text-center flex items-center justify-center gap-2">
+                                    <Sparkles size={16} /> Hoàn thành xuất sắc!
+                                </p>
+                            </div>
+                            <Button onClick={downloadImage} className="w-full py-4 text-lg font-bold shadow-lg shadow-purple-500/20" icon={<Download size={20} />}>
+                                Tải Ảnh Về Máy
+                            </Button>
+                            <Button onClick={() => setAppState(AppState.IDLE)} variant="secondary" className="w-full py-3" icon={<RefreshCw size={16} />}>
+                                Làm Mới / Tách Ảnh Khác
+                            </Button>
+                          </>
+                      ) : (
+                          <Button 
+                            onClick={handleGenerate} 
+                            disabled={!uploadedImage || appState === AppState.PROCESSING}
+                            isLoading={appState === AppState.PROCESSING}
+                            className={`w-full py-4 text-lg font-bold shadow-lg shadow-purple-500/20 group relative overflow-hidden`}
+                          >
+                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-200%] group-hover:animate-[shimmer_1.5s_infinite]"></div>
+                            <span className="relative flex items-center gap-2">
+                                <Wand2 size={20} />
+                                {appState === AppState.PROCESSING ? 'AI Đang Suy Nghĩ...' : 'Bắt Đầu Tách Nền'}
+                            </span>
+                          </Button>
+                      )}
+                  </div>
+                  
+                  <div className="mt-4 pt-4 border-t border-gray-800 text-center">
+                      <p className="text-[10px] text-gray-500">
+                          Credits hiện có: <span className="text-white font-bold">{currentUser?.credits}</span> • Chi phí: <span className="text-yellow-500 font-bold">{COST_MAP[resolution]}</span>
+                      </p>
+                  </div>
+              </div>
+          </div>
       </div>
     </div>
   );
+
+  // Safe Render Logic
+  try {
+      if (!currentUser) {
+          return <Auth onLogin={handleLogin} />;
+      }
+
+      return (
+        <div className="min-h-screen bg-[#0B0F19] text-gray-100 font-sans pb-10 overflow-x-hidden selection:bg-purple-500/30">
+          {/* Notifications */}
+          {notification && (
+            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg text-sm font-bold flex items-center gap-2 border border-gray-700">
+               <Sparkles size={16} className="text-yellow-300" /> {notification}
+            </div>
+          )}
+
+          <StarShop 
+            isOpen={showShop} 
+            onClose={() => setShowShop(false)} 
+            onPurchase={handlePurchase} 
+            currentVipLevel={currentUser.vipLevel}
+          />
+          
+          <Sidebar 
+            isOpen={isSidebarOpen} 
+            onClose={() => setIsSidebarOpen(false)} 
+            currentView={currentView as any}
+            onChangeView={(v) => setCurrentView(v)}
+            onOpenShop={() => setShowShop(true)}
+            vipLevel={currentUser.vipLevel}
+            totalRecharged={currentUser.totalRecharged || 0}
+          />
+
+          <div className="relative max-w-7xl mx-auto px-4 py-4 z-10">
+             {/* Simple Header */}
+             <header className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                   <button onClick={() => setIsSidebarOpen(true)} className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors"><Menu size={24}/></button>
+                   <button onClick={() => handleLogout()} className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors"><LogOut size={20}/></button>
+                </div>
+                
+                <div className="absolute left-1/2 -translate-x-1/2 text-center">
+                     <h1 className="text-2xl md:text-3xl font-black text-white font-['Caveat']">
+                      Separate Clothes AI 2.0
+                   </h1>
+                </div>
+                
+                <button onClick={() => setShowShop(true)} className="flex items-center gap-2 bg-[#1e293b] px-4 py-2 rounded-full border border-gray-700 hover:border-blue-500 transition-colors group">
+                   <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+                   <span className="text-white font-bold text-sm">{formatStarBalance(currentUser.credits)}</span>
+                   <div className="bg-blue-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shadow-md group-hover:scale-105 transition-transform">+</div>
+                </button>
+             </header>
+
+             {/* MAIN CONTENT WRAPPER */}
+             <div className={getContainerStyle()}>
+                <div className="spirit-path hidden md:block"><div className="spirit phoenix-spirit"></div></div>
+                
+                <div className={`bg-[#0f1522] rounded-2xl p-4 md:p-6 min-h-[80vh] relative z-10`}>
+                   {currentView === 'HOME' && renderHome()}
+                   {currentView === 'PROFILE' && (
+                      <ProfileView 
+                         profile={currentUser.profile}
+                         vipLevel={currentUser.vipLevel}
+                         credits={currentUser.credits}
+                         onUpdateAvatar={handleUpdateAvatar}
+                         onEquipFrame={(id) => setCurrentUser(prev => prev ? ({...prev, profile: {...prev.profile, currentFrameId: id}}) : null)}
+                         onBuyFrame={(f) => {
+                            if (currentUser.credits >= (f.cost || 0)) {
+                               setCurrentUser(prev => prev ? ({
+                                   ...prev,
+                                   credits: prev.credits - (f.cost || 0),
+                                   profile: { ...prev.profile, ownedFrameIds: [...prev.profile.ownedFrameIds, f.id], currentFrameId: f.id }
+                               }) : null);
+                            }
+                         }}
+                         onWatchAd={() => alert("Đã xem QC (Giả lập)")}
+                      />
+                   )}
+                   {currentView === 'HISTORY' && (
+                      <HistoryView 
+                         history={processedHistory}
+                         onSelect={handleHistorySelect}
+                         onClear={() => { setProcessedHistory([]); localStorage.removeItem(STORAGE_KEY_HISTORY); }}
+                         onDeleteItem={handleHistoryDeleteOne}
+                         vipLevel={currentUser.vipLevel}
+                         maxStorageBytes={STORAGE_LIMITS[currentUser.vipLevel]}
+                         usedStorageBytes={calculateTotalHistorySize(processedHistory)}
+                         onOpenShop={() => setShowShop(true)}
+                      />
+                   )}
+                   {currentView === 'DRAW' && <FreeDraw vipLevel={currentUser.vipLevel} onOpenShop={() => setShowShop(true)} />}
+                   {currentView === 'AUTO_PAINT' && <AutoPainter vipLevel={currentUser.vipLevel} onOpenShop={() => setShowShop(true)} />}
+                   {currentView === 'ADMIN_CHAT' && <AdminChat currentUser={currentUser} onOpenShop={() => setShowShop(true)} />}
+                   {currentView === 'PUBLIC_CHAT' && <PublicChat currentUser={currentUser} onUpdateUser={setCurrentUser} onOpenShop={() => setShowShop(true)} />}
+                   {currentView === 'ADMIN' && <AdminPanel currentUser={currentUser} />}
+                </div>
+             </div>
+          </div>
+        </div>
+      );
+  } catch (err) {
+      console.error("Render error:", err);
+      // Force clear corrupt user state if render fails
+      if (currentUser) setCurrentUser(null); 
+      return <div className="p-10 text-center text-white">Loading Recovery...</div>;
+  }
 };
 
 export default App;
